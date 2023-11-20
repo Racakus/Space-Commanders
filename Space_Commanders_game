@@ -1,0 +1,358 @@
+import sys, random, pygame
+from pygame.event import wait
+from pygame.locals import *
+
+FPS = 30
+WINDOW_WIDTH = 480
+WINDOW_HEIGHT = 640
+
+BGCOLOR = (0, 0, 0)
+WHITE = (255, 255, 255)
+GRAY = (100, 100, 100)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+DARKGREEN = (0, 155, 0)
+YELLOW = (255, 255, 0)
+DISPLAY_SURFACE = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+
+
+def movement(player):
+  keys_pressed = pygame.key.get_pressed()
+  if keys_pressed[K_LEFT]:
+    if player.x >= player.height:
+      player.x = player.x - 15
+  elif keys_pressed[K_RIGHT]:
+    if player.x < WINDOW_WIDTH - player.height:
+      player.x = player.x + 15
+
+
+def quit_and_shoot(player, player_shots):
+  for event in pygame.event.get():
+    if event.type == QUIT:
+      terminate()
+    elif event.type == KEYDOWN and event.key == K_SPACE:
+      add_new_shot(player_shots, player)
+
+
+def enemy_shot_move(shots):
+  for shot in shots:
+    shot.start_y = shot.start_y + 10
+    shot.end_y = shot.end_y + 10
+
+
+def player_shot_move(player_shots):
+  index = 0
+  for shot in player_shots:
+    shot.start_y = shot.start_y - 10
+    shot.end_y = shot.end_y - 10
+    if shot.start_y <= 0:
+      player_shots.pop(index)
+    index += 1
+
+
+def add_new_shot(player_shots, player):
+  i = Player_Projectile(player)
+  player_shots.append(i)
+
+
+def draw_game_state(player, enemies, shots, player_shots, enemy_count, level):
+  DISPLAY_SURFACE.fill(BGCOLOR)
+  for shot in player_shots:
+    pygame.draw.line(DISPLAY_SURFACE, YELLOW, (shot.start_x, shot.start_y), (shot.end_x, shot.end_y), shot.width)
+  for enemy in enemies:
+    pygame.draw.rect(DISPLAY_SURFACE, RED, pygame.Rect(enemy.x, enemy.y, enemy.width, enemy.height))
+  for shot in shots:
+    pygame.draw.line(DISPLAY_SURFACE, WHITE, (shot.start_x, shot.start_y), (shot.end_x, shot.end_y), shot.width)
+  pygame.draw.rect(DISPLAY_SURFACE, GREEN, pygame.Rect(player.x, player.y, player.width, player.height))
+  previous_score = 0
+  for i in range(1, level):
+    previous_score = previous_score + i * 2 + 5
+  total_score = previous_score + (enemy_count - len(enemies))
+  player_health = player.health
+  score_health(total_score, player_health, level)
+  pygame.display.set_caption('Title of window')
+  pygame.display.update()
+
+
+def score_health(player_score, player_health, level):
+  pygame.draw.rect(DISPLAY_SURFACE, BGCOLOR, Rect(WINDOW_WIDTH - 80, WINDOW_HEIGHT - 80, 80, 80))
+
+  text_surf_score = BASIC_FONT.render(f"score: {player_score}", True, WHITE)
+  text_surf_health = BASIC_FONT.render(f"health: {player_health}", True, WHITE)
+  text_surf_level = BASIC_FONT.render(f"level: {level}", True, RED)
+
+  text_rect_score = text_surf_score.get_rect()
+  text_rect_health = text_surf_health.get_rect()
+  text_rect_level = text_surf_level.get_rect()
+
+  text_rect_score.center = WINDOW_WIDTH - 80, WINDOW_HEIGHT - 80
+  text_rect_health.center = WINDOW_WIDTH - 75, WINDOW_HEIGHT - 50
+  text_rect_level.center = WINDOW_WIDTH - 420, WINDOW_HEIGHT - 50
+
+  DISPLAY_SURFACE.blit(text_surf_score, text_rect_score)
+  DISPLAY_SURFACE.blit(text_surf_health, text_rect_health)
+  DISPLAY_SURFACE.blit(text_surf_level, text_rect_level)
+
+
+def hitbox(player, shots):
+  for shot in shots:
+    if player.x < shot.start_x < player.x + player.width and player.y < shot.start_y < player.y + player.height:
+      player.health -= 1
+      shot.start_y = shot.enemy.y + shot.enemy.height // 2 + shot.enemy.height // 2
+      shot.end_y = shot.enemy.y + shot.enemy.height // 2 + shot.enemy.height + 10
+    elif shot.end_y > WINDOW_HEIGHT:
+      shot.start_y = shot.enemy.y + shot.enemy.height // 2 + shot.enemy.height // 2
+      shot.end_y = shot.enemy.y + shot.enemy.height // 2 + shot.enemy.height + 10
+
+
+def enemy_hitbox(enemies, player_shots, shots):
+  p_index = 0
+  for e_index, enemy in enumerate(enemies):
+    for shot in player_shots:
+      if enemy.x <= shot.start_x <= enemy.x + enemy.width and enemy.y <= shot.start_y <= enemy.y + enemy.height:
+        enemy.health -= 1
+        if enemy.health <= 0:
+          enemies.pop(e_index)
+          shots.pop(e_index)
+        player_shots.pop(p_index)
+
+
+def prepare_enemies(number):
+  enemies = []
+  count = 1
+  row = 0
+  for i in range(0, number):
+    i = Enemy()
+    i.x = i.x * count
+    i.y = i.y + row
+    enemies.append(i)
+    if count < (WINDOW_WIDTH // (i.width + 7)):
+      count += 1
+    else:
+      count = 1
+      row += 130
+  return enemies
+
+
+def prepare_shots(enemies):
+  shots = []
+  for i in range(0, len(enemies)):
+    i = Projectile(enemies[i])
+    shots.append(i)
+  return shots
+
+
+def check_game(enemies, player):
+  if len(enemies) == 0:
+    return True
+  elif player.health == 0:
+    game_over()
+  return False
+
+
+def game_over():
+  game_over_font = pygame.font.Font('freesansbold.ttf', 150)
+  game_surface = game_over_font.render('Game', True, WHITE)
+  over_surface = game_over_font.render('Over', True, WHITE)
+  game_rect = game_surface.get_rect()
+  over_rect = over_surface.get_rect()
+  game_rect.midtop = (WINDOW_WIDTH / 2, 10)
+  over_rect.midtop = (WINDOW_WIDTH / 2, game_rect.height + 10 + 25)
+
+  DISPLAY_SURFACE.blit(game_surface, game_rect)
+  DISPLAY_SURFACE.blit(over_surface, over_rect)
+  pygame.display.update()
+  pygame.time.wait(1500)
+  main()
+
+
+def congratulations():
+  DISPLAY_SURFACE.fill(BGCOLOR)
+  main_text_font = pygame.font.Font('freesansbold.ttf', 30)
+  text_font = pygame.font.Font('freesansbold.ttf', 30)
+  overall_score_font = pygame.font.Font('freesansbold.ttf', 40)
+
+  congrats_surface = main_text_font.render('Congrajlashins!! You won!', True, WHITE)
+  congrats_rect = congrats_surface.get_rect()
+  congrats_rect.midtop = (WINDOW_WIDTH / 2, 100)
+  overall_score_surface = overall_score_font.render('SCORE: 162', True, WHITE)
+  overall_score_rect = overall_score_surface.get_rect()
+
+  prize_surface = text_font.render('Here is your prize:', True, WHITE)
+  prize_rect = prize_surface.get_rect()
+  prize_rect.midtop = (WINDOW_WIDTH / 2, 200)
+  overall_score_rect.midtop = (WINDOW_WIDTH / 2, 550)
+
+  DISPLAY_SURFACE.blit(overall_score_surface, overall_score_rect)
+  DISPLAY_SURFACE.blit(congrats_surface, congrats_rect)
+  DISPLAY_SURFACE.blit(prize_surface, prize_rect)
+  pygame.draw.rect(DISPLAY_SURFACE, YELLOW, (WINDOW_WIDTH // 2 - 50, WINDOW_HEIGHT // 2, 100, 50))
+  pygame.draw.circle(DISPLAY_SURFACE, YELLOW, (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 50), 50, 50)
+  pygame.draw.circle(DISPLAY_SURFACE, YELLOW, (WINDOW_WIDTH // 2 - 50, WINDOW_HEIGHT // 2 + 40), 30, 10)
+  pygame.draw.circle(DISPLAY_SURFACE, YELLOW, (WINDOW_WIDTH // 2 + 50, WINDOW_HEIGHT // 2 + 40), 30, 10)
+  pygame.draw.rect(DISPLAY_SURFACE, YELLOW, (WINDOW_WIDTH // 2 - 10, WINDOW_HEIGHT // 2 + 80, 20, 80))
+  pygame.draw.rect(DISPLAY_SURFACE, YELLOW, (WINDOW_WIDTH // 2 - 35, WINDOW_HEIGHT // 2 + 140, 70, 20))
+  pygame.display.update()
+  pygame.time.wait(5000)
+
+
+class Enemy():
+
+  def __init__(self):
+    self.health = 1
+    self.height = 30
+    self.width = 30
+    self.x = 35
+    self.y = random.randint(self.height, 130)
+
+
+class Player():
+
+  def __init__(self):
+    self.health = 5
+    self.height = 30
+    self.width = 30
+    self.x = WINDOW_WIDTH // 2
+    self.y = 500
+    self.size = self.height * self.width
+
+
+class Projectile():
+
+  def __init__(self, enemy):
+    self.start_x = enemy.x + enemy.width // 2
+    self.end_x = enemy.x + enemy.width // 2
+    self.end_y = enemy.y + enemy.height // 2 + enemy.height + 10
+    self.start_y = enemy.y + enemy.height // 2 + enemy.height // 2
+    self.width = 1
+    self.enemy = enemy
+
+
+class Player_Projectile():
+
+  def __init__(self, player):
+    self.start_x = player.x + player.width // 2
+    self.end_x = player.x + player.width // 2
+    self.end_y = player.y + player.width // 2 - player.height - 10
+    self.start_y = player.y + player.width // 2 - player.height // 2
+    self.width = 1
+    self.player = player
+
+
+def game_start():
+  DISPLAY_SURFACE.fill(BGCOLOR)
+  main_text_font = pygame.font.Font('freesansbold.ttf', 40)
+  text_font = pygame.font.Font('freesansbold.ttf', 30)
+
+  play_surface = main_text_font.render('Wanna play? press:', True, WHITE)
+  play_rect = play_surface.get_rect()
+  play_rect.midtop = (WINDOW_WIDTH / 2, 100)
+
+  a_surface = text_font.render('A, if yes', True, WHITE)
+  a_rect = a_surface.get_rect()
+  a_rect.topleft = (100, play_rect.height + 150)
+
+  n_surface = text_font.render('N, if no (quit game)', True, WHITE)
+  n_rect = n_surface.get_rect()
+  n_rect.topleft = (100, play_rect.height + a_rect.height + 150)
+
+  c_surface = text_font.render('C, for game controls', True, WHITE)
+  c_rect = c_surface.get_rect()
+  c_rect.topleft = (100, play_rect.height + a_rect.height + n_rect.height + 150)
+
+  DISPLAY_SURFACE.blit(play_surface, play_rect)
+  DISPLAY_SURFACE.blit(a_surface, a_rect)
+  DISPLAY_SURFACE.blit(n_surface, n_rect)
+  DISPLAY_SURFACE.blit(c_surface, c_rect)
+  pygame.display.update()
+
+  while True:
+    for event in pygame.event.get():
+      if event.type == KEYDOWN and event.key == K_a:
+        return
+      elif (event.type == KEYDOWN
+            and event.key == K_n) or event.type == pygame.QUIT:
+        terminate()
+      elif event.type == KEYDOWN and event.key == K_c:
+        game_controls()
+        game_start()
+
+
+def game_controls():
+  DISPLAY_SURFACE.fill(BGCOLOR)
+  main_text_font = pygame.font.Font('freesansbold.ttf', 40)
+  text_font = pygame.font.Font('freesansbold.ttf', 20)
+
+  controls_surface = main_text_font.render('Game controls', True, WHITE)
+  controls_rect = controls_surface.get_rect()
+  controls_rect.midtop = (WINDOW_WIDTH / 2, 100)
+
+  arrows_surface = text_font.render('hold arrow keys to move left and right',
+                                    True, WHITE)
+  arrows_rect = arrows_surface.get_rect()
+  arrows_rect.topleft = (20, controls_rect.height + 150)
+
+  shoot_surface = text_font.render('press spacebar to shoot', True, WHITE)
+  shoot_rect = shoot_surface.get_rect()
+  shoot_rect.topleft = (20, controls_rect.height + arrows_rect.height + 150)
+
+  return_surface = text_font.render('press any key to return to previous menu', True, WHITE)
+  return_rect = return_surface.get_rect()
+  return_rect.topleft = (20, controls_rect.height + arrows_rect.height + shoot_rect.height + 250)
+
+  DISPLAY_SURFACE.blit(controls_surface, controls_rect)
+  DISPLAY_SURFACE.blit(arrows_surface, arrows_rect)
+  DISPLAY_SURFACE.blit(shoot_surface, shoot_rect)
+  DISPLAY_SURFACE.blit(return_surface, return_rect)
+  pygame.display.update()
+
+  while True:
+    for event in pygame.event.get():
+      if event.type == KEYDOWN:
+        return
+      elif event.type == pygame.QUIT:
+        terminate()
+
+
+def main():
+  global FPSCLOCK, DISPLAY_SURFACE, BASIC_FONT
+  pygame.init()
+  FPSCLOCK = pygame.time.Clock()
+  DISPLAY_SURFACE = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+  BASIC_FONT = pygame.font.Font('freesansbold.ttf', 20)
+  game_start()
+  initial_level = 1
+  for level in range(initial_level, 11):
+    run_game(level)
+  main()
+
+
+def run_game(level):
+  enemy_count = 5 + level * 2
+  enemies = prepare_enemies(enemy_count)
+  shots = prepare_shots(enemies)
+  player = Player()
+  player_shots = []
+  while True:
+    hitbox(player, shots)
+    enemy_hitbox(enemies, player_shots, shots)
+    quit_and_shoot(player, player_shots)
+    movement(player)
+    FPSCLOCK.tick(FPS)
+    enemy_shot_move(shots)
+    player_shot_move(player_shots)
+    draw_game_state(player, enemies, shots, player_shots, enemy_count, level)
+    if (check_game(enemies, player)) and level == 10:
+      congratulations()
+      return
+    elif check_game(enemies, player):
+      return
+
+
+def terminate():
+  pygame.quit()
+  exit()
+
+
+if __name__ == '__main__':
+  main()
